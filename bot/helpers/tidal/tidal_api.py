@@ -193,7 +193,10 @@ class TidalApi:
         if not tv_session:
             self.tv_session = None
 
-        if self.tv_session.user_id or self.mobile_atmos.user_id or self.mobile_hires.user_id:
+        # FIX FOR AttributeError: 'NoneType' object has no attribute 'user_id'
+        if (self.tv_session and self.tv_session.user_id) or \
+           (self.mobile_atmos and self.mobile_atmos.user_id) or \
+           (self.mobile_hires and self.mobile_hires.user_id):
             self.sub_type = await self.get_subscription()
         else:
             self.sub_type = 'UNKNOWN'
