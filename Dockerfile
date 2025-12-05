@@ -1,10 +1,12 @@
 FROM python:3.12-slim AS base
 
+# Set timezone and non-interactive environment
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Kolkata
 
 WORKDIR /usr/src/app
 
+# Install system dependencies
 RUN apt-get update -qq && \
     apt-get install -qq -y ffmpeg gcc libffi-dev && \
     rm -rf /var/lib/apt/lists/*
@@ -32,6 +34,11 @@ COPY --from=builder /usr/bin/rclone /usr/bin/rclone
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy all application files
 COPY . .
+
+# *** FIX: Create the DOWNLOADS directory before running the bot ***
+# The -p flag ensures parent directories ('./bot') are created if they don't exist.
+RUN mkdir -p ./bot/DOWNLOADS
 
 ENTRYPOINT ["python", "-m", "bot"]
