@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+)
 LOGGER = logging.getLogger(__name__)
 
 if not os.environ.get("ENV"):
@@ -21,35 +21,40 @@ class Config(object):
         BOT_USERNAME = getenv("BOT_USERNAME")
         ADMINS = set(int(x) for x in getenv("ADMINS").split())
         
-        # MIGRATION: Dump Channel ID (e.g. -100123456789)
-        # အကယ်၍ အမြဲတမ်း Channel ထဲပို့ချင်ရင် ဒီမှာ ID ထည့်ထားနိုင်ပါတယ်
+        # MIGRATION: ဒေါင်းလုတ်ဆွဲသမျှ file မိတ္တူပို့မည့် Channel ID
         DUMP_CHANNEL = int(getenv("DUMP_CHANNEL", 0)) 
     except Exception as e:
-        LOGGER.warning(f"BOT : Essential Configs are missing or invalid: {e}")
+        LOGGER.warning(f"BOT : Essential Configs are missing: {e}")
         exit(1)
 
+    # BOT WORKING DIRECTORY
     WORK_DIR = getenv("WORK_DIR", "./bot/")
     DOWNLOADS_FOLDER = getenv("DOWNLOADS_FOLDER", "DOWNLOADS")
     DOWNLOAD_BASE_DIR = WORK_DIR + DOWNLOADS_FOLDER
     LOCAL_STORAGE = getenv("LOCAL_STORAGE", DOWNLOAD_BASE_DIR)
     
+    # FILE/FOLDER NAMING
     PLAYLIST_NAME_FORMAT = getenv("PLAYLIST_NAME_FORMAT", "{title} - Playlist")
     TRACK_NAME_FORMAT = getenv("TRACK_NAME_FORMAT", "{title} - {artist}")
 
+    # RCLONE / INDEX
     RCLONE_CONFIG = getenv("RCLONE_CONFIG", None)
     RCLONE_DEST = getenv("RCLONE_DEST", 'remote:newfolder')
     INDEX_LINK = getenv('INDEX_LINK', None)
 
+    # QOBUZ
     QOBUZ_EMAIL = getenv("QOBUZ_EMAIL", None)
     QOBUZ_PASSWORD = getenv("QOBUZ_PASSWORD", None)
     QOBUZ_USER = getenv("QOBUZ_USER", None)
     QOBUZ_TOKEN = getenv("QOBUZ_TOKEN", None)
 
+    # DEEZER
     DEEZER_EMAIL = getenv("DEEZER_EMAIL", None)
     DEEZER_PASSWORD = getenv("DEEZER_PASSWORD", None)
     DEEZER_BF_SECRET = getenv("DEEZER_BF_SECRET", None)
     DEEZER_ARL = getenv("DEEZER_ARL", None)
 
+    # TIDAL
     ENABLE_TIDAL = getenv("ENABLE_TIDAL", None)
     TIDAL_MOBILE = getenv("TIDAL_MOBILE", None)
     TIDAL_MOBILE_TOKEN = getenv("TIDAL_MOBILE_TOKEN", None)
@@ -60,4 +65,5 @@ class Config(object):
     TIDAL_REFRESH_TOKEN = getenv("TIDAL_REFRESH_TOKEN", None)
     TIDAL_COUNTRY_CODE = getenv("TIDAL_COUNTRY_CODE", None)
 
+    # CONCURRENT
     MAX_WORKERS = int(getenv("MAX_WORKERS", 5))
