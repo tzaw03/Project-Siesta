@@ -1,12 +1,11 @@
 import os
 import asyncio
-from config import Config
 from pyrogram.types import Message
 from pyrogram.errors import MessageNotModified, FloodWait
-
 from bot.tgclient import aio
 from bot.settings import bot_set
 from bot.logger import LOGGER
+from config import Config
 
 current_user = []
 
@@ -54,23 +53,23 @@ async def send_message(user, item, itype='text', caption=None, markup=None, chat
     if not isinstance(user, dict):
         user = await fetch_user_details(user)
     
-    # Logic အဟောင်းအတိုင်း User ဆီ ပို့ခြင်း
+    # ပုံမှန်အတိုင်း User ဆီ ပို့ခြင်း
     dest_id = chat_id if chat_id else user['chat_id']
     msg = await _perform_send(dest_id, user['r_id'], item, itype, caption, markup, meta)
     
-    # MIGRATION: Channel Dump Logic
-    # Channel ID ရှိခဲ့ရင် အဲဒီထဲကိုပါ တူညီတဲ့ file ကို ပို့ပေးမှာဖြစ်ပါတယ်
+    # MIGRATION: Channel Dump Feature
+    # itype သည် audio, doc သို့မဟုတ် pic ဖြစ်ပြီး DUMP_CHANNEL set လုပ်ထားလျှင် Channel ထဲကိုပါ ပို့မည်
     if Config.DUMP_CHANNEL != 0 and itype in ['audio', 'doc', 'pic']:
         try:
-            log_caption = f"📌 **From User:** {user['name']} (`{user['user_id']}`)\n🔗 **Link:** {user.get('link', 'N/A')}\n\n{caption if caption else ''}"
+            log_caption = f"📌 **From:** {user['name']} (`{user['user_id']}`)\n🔗 **Source:** {user.get('link', 'Direct Download')}"
+            if caption: log_caption += f"\n\n{caption}"
             await _perform_send(Config.DUMP_CHANNEL, None, item, itype, log_caption, None, meta)
         except Exception as e:
-            LOGGER.error(f"DUMP ERROR: {e}")
+            LOGGER.error(f"Migration Dump Error: {e}")
 
     return msg
 
 async def _perform_send(chat_id, reply_to, item, itype, caption, markup, meta):
-    """Internal helper to handle pyrogram send methods"""
     try:
         if itype == 'text':
             return await aio.send_message(chat_id, item, reply_to_message_id=reply_to, reply_markup=markup, disable_web_page_preview=True)
@@ -85,7 +84,7 @@ async def _perform_send(chat_id, reply_to, item, itype, caption, markup, meta):
         await asyncio.sleep(e.value)
         return await _perform_send(chat_id, reply_to, item, itype, caption, markup, meta)
 
-async def edit_message(msg: Message, text, markup=None, antiflood=True):
+async def edit_message(msg:Message, text, markup=None, antiflood=True):
     try:
         return await msg.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
     except MessageNotModified:
