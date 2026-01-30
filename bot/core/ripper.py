@@ -46,6 +46,8 @@ class Ripper:
             await cls.handle_album(item_id, provider, task_details)
         elif type_ == 'artist':
             await cls.handle_artist(item_id, provider, task_details)
+        elif type_ == 'playlist':
+            await cls.handle_playlist(item_id, provider, task_details)
         else:
             raise MetadataTypeError
 
@@ -126,6 +128,41 @@ class Ripper:
             await uploader.upload(task_details, artist_path, metadata)
 
 
+    @classmethod
+    async def handle_playlist(cls, item_id, provider: type[Provider], task_details: TaskDetails):
+        metadata = await provider.get_playlist_metadata(item_id, task_details)
+        playlist_path = cls.get_playlist_dir(task_details, metadata)
+
+        tasks = []
+        for track in metadata.tracks:
+            if bot_settings.playlist_sort:
+                track_path = cls.get_track_path(task_details, track)
+            else:
+                track_path = playlist_path / format_string("track", track)
+            
+            tasks.append(provider.download_track(track, task_details, track_path))
+        
+        uploader = get_uploader()
+        
+        if not bot_settings.playlist_conc and not ZipHandler.should_zip(metadata):
+            i, l = 0, len(tasks)
+            for task, track in zip(tasks, metadata.tracks):
+                bar = _progress_bar(i, l)
+                await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.title, 'Playlist Tracks'), flood_wait=False)
+                track_path = await task
+                await uploader.upload(task_details, track_path, track)
+                i+=1
+        else:
+            results = await cls._run_album_tasks(tasks, metadata.title, True, task_details.bot_msg)
+            
+            if ZipHandler.should_zip(metadata) and not bot_settings.playlist_sort:
+                 await uploader.upload(task_details, playlist_path, metadata)
+            else:
+                for track_path, track in zip(results, metadata.tracks):
+                    if track_path: # Ensure download was successful
+                        await uploader.upload(task_details, track_path, track)
+
+
 
 
     @staticmethod
@@ -140,7 +177,8 @@ class Ripper:
                     i[0]+=1 # currently done
                     bar = _progress_bar(i[0], l)
                     await edit_message(bot_msg, format_progress_message(bar, i[0], l, title, 'Album Tracks'), flood_wait=False)
-        await asyncio.gather(*(sem_task(task) for task in tasks))
+                return result
+        return await asyncio.gather(*(sem_task(task) for task in tasks))
 
 
 
@@ -179,5 +217,14 @@ class Ripper:
         artist_name = format_string('artist', artist)
         
         path = task_details.dl_folder / artist.provider.title() / artist_name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
+    @staticmethod
+    def get_playlist_dir(task_details: TaskDetails, playlist: PlaylistMetadata) -> Path:
+        """Generate the directory path for a playlist."""
+        
+        path = task_details.dl_folder / playlist.provider.title() / "Playlists" / playlist.title
         path.mkdir(parents=True, exist_ok=True)
         return path
