@@ -45,13 +45,10 @@ class QobuzHandler(Provider):
         if not raw_data.get('streamable'):
             raise NotAvailableForDownload
 
-        _tracks_list = raw_data['tracks']['items']
 
-        tracks = []
-
-        for item in _tracks_list:
-            track_meta = await cls.get_track_metadata(item['id'], task_details)
-            tracks.append(track_meta)
+        tracks = raw_data['tracks']['items']
+        for track in tracks: # inject album data for cached usage of metadata
+            track['album'] = raw_data # not memory efficient but better than api calls
 
         metadata = await QobuzMetadata.process_album_metadata(item_id, raw_data, tracks, task_details.tempfolder)
         return metadata

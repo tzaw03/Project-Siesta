@@ -56,14 +56,18 @@ class QobuzMetadata(MetadataHandler):
 
         metadata.cover = await cls.get_cover(album_data['image']['large'], cover_folder)
         metadata.thumbnail = await cls.get_cover(album_data['image']['thumbnail'], cover_folder)
-        metadata.tracks=track_datas
+        
+        tracks = []
+        for item in track_datas:
+            track = await cls.process_track_metadata(item['id'], item, cover_folder)
+            tracks.append(track)
+        metadata.tracks = tracks
 
         return metadata
 
     
     @classmethod
     async def process_artist_metadata(cls, artist_data, album_datas, cover_folder):
-        artist_data = artist_data[0]
         metadata = ArtistMetadata(
             itemid=artist_data['id'],
             title=artist_data['name'],
