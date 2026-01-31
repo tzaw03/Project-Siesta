@@ -18,6 +18,7 @@ class QoClient:
         self.base = "https://www.qobuz.com/api.json/0.2/"
         self.sec = None
         self.quality = 6
+        self.active = False
         
 
     async def api_call(self, epoint, **kwargs):

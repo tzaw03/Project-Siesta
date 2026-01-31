@@ -3,18 +3,8 @@ from enum import IntEnum, Enum
 class QobuzQuality(IntEnum):
     MP3 = 5
     LOSSLESS = 6        # CD Quality (16-bit / 44.1kHz)
-    HI_RES_96 = 7       # 24-bit <= 96kHz
-    HI_RES_192 = 27     # 24-bit > 96kHz
-
-    @property
-    def label(self):
-        labels = {
-            5: 'MP3 320',
-            6: 'Lossless',
-            7: '24B<=96KHZ',
-            27: '24B>96KHZ'
-        }
-        return labels.get(self.value, "Unknown")
+    HIRES96 = 7       # 24-bit <= 96kHz
+    HIRES192 = 27     # 24-bit > 96kHz
 
 
 class TidalQuality(Enum):

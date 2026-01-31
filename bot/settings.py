@@ -15,7 +15,8 @@ class BotSettings:
     def __init__(self):
         self.admins = Config.ADMINS
 
-        set_lang(self._get_db_value('BOT_LANGUAGE','en'))
+        self.bot_lang= self._get_db_value('BOT_LANGUAGE','en')
+        set_lang(self.bot_lang)
 
         self.auth_users = json.loads(self._get_db_value('AUTH_USERS', '[]'))
         self.auth_chats = json.loads(self._get_db_value('AUTH_CHATS', '[]'))

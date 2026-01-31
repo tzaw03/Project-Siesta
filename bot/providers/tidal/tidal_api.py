@@ -29,6 +29,8 @@ class TidalApi:
         self.saved = [] # just for storing opened client session
 
         self.sub_type = 'UNKNOWN'
+        self.active = False
+        self.can_login = True
 
 
     async def _get(self, url: str, params: dict | None = None, session=None, refresh=False):
@@ -148,6 +150,7 @@ class TidalApi:
     async def login_tv(self):
         await self.tv_session.auth()
         self.saved.append(self.tv_session)
+        self.active = True
 
         self.sub_type = await self.get_subscription()
         LOGGER.info(f"TIDAL : Loaded account - {self.sub_type}")

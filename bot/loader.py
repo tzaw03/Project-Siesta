@@ -30,6 +30,7 @@ async def login_qobuz():
         quality, _ = settings_db.get_variable("QOBUZ_QUALITY")
         if quality:
             qobuz_api.quality = int(quality)
+        qobuz_api.active = True
         return qobuz_api
     except Exception as e:
         await close_session(qobuz_api)
@@ -87,9 +88,13 @@ async def login_tidal():
                 Config.TIDAL_ATMOS_MOBILE_TOKEN,
                 data
             )
+            tidalapi.active = True
             return tidalapi
         except Exception as e:
             LOGGER.error(e)
+    else:
+        if not Config.TIDAL_TV_SECRET and not Config.TIDAL_TV_TOKEN:
+            tidalapi.can_login = False
 
 
         

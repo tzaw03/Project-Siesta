@@ -1,5 +1,5 @@
 from pyrogram import Client, filters
-from pyrogram.types import CallbackQuery, Message
+from pyrogram.types import CallbackQuery
 
 from bot import Config
 from bot.settings import bot_settings
@@ -10,7 +10,11 @@ from bot.buttons.qobuz import *
 
 from bot.models.types import QobuzQuality, TidalQuality, TidalSpatial
 from bot.helpers.database.pg_impl import settings_db
+
 from bot.providers.tidal.tidal_api import tidalapi
+from bot.providers.qobuz.qopy import qobuz_api
+
+
 from bot.utils.message import edit_message, check_user
 from bot.helpers.translations import L
 
@@ -32,13 +36,13 @@ async def provider_cb(c, cb:CallbackQuery):
 @Client.on_callback_query(filters.regex(pattern=r"^qbP"))
 async def qobuz_cb(c, cb: CallbackQuery):
     if await check_user(cb.from_user.id, restricted=True):
-        current_id = bot_settings.qobuz.quality
+        current_id = qobuz_api.quality
 
         quality_display = {}
         for q in QobuzQuality:
-            text = q.label
+            text = q.name
             if q.value == current_id: text += ' ✅'
-            quality_display[q.value] = text
+            quality_display[text] = q.value
 
         try:
             await edit_message(
@@ -56,7 +60,7 @@ async def qobuz_quality_cb(c, cb: CallbackQuery):
             data_id = int(cb.data.split('_')[1])
             new_quality = QobuzQuality(data_id)
 
-            bot_settings.qobuz.quality = new_quality.value
+            qobuz_api.quality = new_quality.value
             settings_db.set_variable('QOBUZ_QUALITY', new_quality.value)
 
             await qobuz_cb(c, cb)
@@ -167,7 +171,6 @@ async def tidal_login_cb(c:Client, cb:CallbackQuery):
         sub = await tidalapi.login_tv()
 
         if sub:
-            bot_settings.tidal = tidalapi
             bot_settings.clients.append(tidalapi)
 
             await bot_settings.save_tidal_login(tidalapi.tv_session)
@@ -194,7 +197,6 @@ async def tidal_remove_login_cb(c:Client, cb:CallbackQuery):
         tidalapi.saved = []
 
         await tidalapi.session.close()
-        bot_settings.tidal = None
 
         await c.answer_callback_query(
             cb.id,

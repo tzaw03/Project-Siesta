@@ -1,6 +1,9 @@
 from bot.helpers.translations import L, LANGS
 
+from bot.providers.qobuz.qopy import qobuz_api
 from bot.settings import bot_settings
+from bot.providers.tidal.tidal_api import tidalapi
+
 from pyrogram.types import InlineKeyboardButton as Button, InlineKeyboardMarkup
 
 main_button = [[Button(text=L.MAIN_MENU_BUTTON, callback_data="main_menu")]]
@@ -19,11 +22,11 @@ def main_menu():
 
 def providers_button():
     inline_keyboard = []
-    if bot_settings.qobuz:
+    if qobuz_api.active:
         inline_keyboard.append([Button(text=L.QOBUZ, callback_data='qbP')])
-    if bot_settings.deezer:
+    if True: #TODO add deezer logic
         inline_keyboard.append([Button(text=L.DEEZER, callback_data='dzP')])
-    if bot_settings.can_enable_tidal:
+    if tidalapi.can_login:
         inline_keyboard.append([Button(text=L.TIDAL, callback_data='tdP')])
     inline_keyboard += main_button + close_button
     return InlineKeyboardMarkup(inline_keyboard)
@@ -76,5 +79,5 @@ def language_buttons():
         inline_keyboard.append(
             [Button(text=text.upper(), callback_data=f'langSet_{item.__language__}')]
         )
-    inline_keyboard += main_button+ close_button
+    inline_keyboard += main_button + close_button
     return InlineKeyboardMarkup(inline_keyboard)
