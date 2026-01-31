@@ -1,14 +1,18 @@
-from bot.models.errors import NotAvailableForDownload
-from .utils import *
-from config import Config
+import re
 
-from pathvalidate import sanitize_filepath
+from bot.models.errors import NotAvailableForDownload
+from bot import LOGGER
+
 from bot.models.provider import Provider
 from .qopy import qobuz_api
 from .metadata import QobuzMetadata
+from bot.utils.downloader import downloader
+from bot.utils.message import send_text
+from bot.utils.metadata import set_metadata
 
 
 class QobuzHandler(Provider):
+
     @staticmethod
     def parse_url(url):
         r = re.search(
@@ -37,232 +41,160 @@ class QobuzHandler(Provider):
 
     @classmethod
     async def get_album_metadata(cls, item_id: str, task_details):
-        pass
+        raw_data = await qobuz_api.get_album_meta(item_id)
+        if not raw_data.get('streamable'):
+            raise NotAvailableForDownload
+
+        _tracks_list = raw_data['tracks']['items']
+
+        tracks = []
+
+        for item in _tracks_list:
+            track_meta = await cls.get_track_metadata(item['id'], task_details)
+            tracks.append(track_meta)
+
+        metadata = await QobuzMetadata.process_album_metadata(item_id, raw_data, tracks, task_details.tempfolder)
+        return metadata
 
 
     @classmethod
     async def get_artist_metadata(cls, item_id, task_details):
-        pass
+        raw_data = await qobuz_api.get_artist_meta(item_id)
+        smart_discography = True
+        if smart_discography:
+            _albums = QobuzHandler.smart_discography_filter(
+                raw_data,
+                save_space=True,
+                skip_extras=True,
+            )
+        else:
+            _albums = [item["albums"]["items"] for item in raw_data][0]
+
+        albums = []
+        for item in _albums:
+            album = await cls.get_album_metadata(item['id'], task_details)
+            albums.append(album)
+        
+        metadata = await QobuzMetadata.process_artist_metadata(raw_data[0], albums, task_details.tempfolder)
+        return metadata
 
 
     @classmethod
     async def get_playlist_metadata(cls, item_id, task_details):
-        pass
+        _data = await qobuz_api.get_plist_meta(item_id)
+        raw_data = _data[0]
 
+        tracks_data = raw_data['tracks']['items']
+
+        metadata = await QobuzMetadata.process_playlist_metadata(raw_data, tracks_data, task_details.tempfolder)
+        return metadata
 
 
     @classmethod
     async def download_track(cls, metadata, task_details, download_path):
-        pass
+        raw_data = await qobuz_api.get_track_url(metadata.itemid)
+        try:
+            url = raw_data['url']
+        except Exception as e:
+            LOGGER.error(e)
+            return
+
+        metadata.extension, metadata.quality, = cls.get_quality(raw_data)
+        download_path = download_path.with_suffix(f".{metadata.extension}")
+
+        try:
+            await downloader.download_file(url, download_path)
+        except Exception as e:
+            LOGGER.error(e)
+            await send_text(e, task_details)
+            return
+
+        await set_metadata(metadata, download_path)
+        return download_path
 
 
 
+    @staticmethod
+    def smart_discography_filter(
+        contents: list, save_space: bool = False, skip_extras: bool = False
+    ) -> list:
+
+        TYPE_REGEXES = {
+            "remaster": r"(?i)(re)?master(ed)?",
+            "extra": r"(?i)(anniversary|deluxe|live|collector|demo|expanded)",
+        }
+
+        def is_type(album_t: str, album: dict) -> bool:
+            """Check if album is of type `album_t`"""
+            version = album.get("version", "")
+            title = album.get("title", "")
+            regex = TYPE_REGEXES[album_t]
+            return re.search(regex, f"{title} {version}") is not None
+
+        def essence(album: dict) -> str:
+            """Ignore text in parens/brackets, return all lowercase.
+            Used to group two albums that may be named similarly, but not exactly
+            the same.
+            """
+            r = re.match(r"([^\(]+)(?:\s*[\(\[][^\)][\)\]])*", album)
+            # when the expression is not matched (when paren/bracket exist before title)
+            if not r:
+                return album.lower()
+            return r.group(1).strip().lower()
+
+        requested_artist = contents[0]["name"]
+        items = [item["albums"]["items"] for item in contents][0]
+
+        # use dicts to group duplicate albums together by title
+        title_grouped = dict()
+        for item in items:
+            title_ = essence(item["title"])
+            if title_ not in title_grouped:  # ?
+                #            if (t := essence(item["title"])) not in title_grouped:
+                title_grouped[title_] = []
+            title_grouped[title_].append(item)
+
+        items = []
+        for albums in title_grouped.values():
+            best_bit_depth = max(a["maximum_bit_depth"] for a in albums)
+            get_best = min if save_space else max
+            best_sampling_rate = get_best(
+                a["maximum_sampling_rate"]
+                for a in albums
+                if a["maximum_bit_depth"] == best_bit_depth
+            )
+            remaster_exists = any(is_type("remaster", a) for a in albums)
+
+            def is_valid(album: dict) -> bool:
+                return (
+                    album["maximum_bit_depth"] == best_bit_depth
+                    and album["maximum_sampling_rate"] == best_sampling_rate
+                    and album["artist"]["name"] == requested_artist
+                    and not (  # states that are not allowed
+                        (remaster_exists and not is_type("remaster", album))
+                        or (skip_extras and is_type("extra", album))
+                    )
+                )
+
+            filtered = tuple(filter(is_valid, albums))
+            # most of the time, len is 0 or 1.
+            # if greater, it is a complete duplicate,
+            # so it doesn't matter which is chosen
+            if len(filtered) >= 1:
+                items.append(filtered[0])
+
+        return items
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-async def start_qobuz(url:str, user:dict):
-    items, item_id, type_dict, content = await check_type(url)
-    if items:
-        # FOR ARTIST
-        if type_dict['iterable_key'] == 'albums':
-                await start_artist(items, user, content)
+    @staticmethod
+    def get_quality(meta:dict):
+        """
+        Args
+            meta : track url metadata dict
+        Returns
+            extention, quality
+        """
+        if qobuz_api.quality == 5:
+            return 'mp3', '320K'
         else:
-        # FOR PLAYLIST 
-            await start_playlist(items, content, user)
-    else:
-        # FOR ALBUM
-        if type_dict["album"]:
-            await start_album(item_id, user)
-        else:
-        # FOR TRACK
-            await start_track(item_id, user, None)
-
-
-async def start_album(item_id:int, user:dict, upload=True, basefolder=None):
-    album_meta, err = await get_album_metadata(item_id, user['r_id'])
-    if err:
-        return await send_message(user, err)
-    
-    # Get user quality by doing a track request
-    track_meta = await qobuz_api.get_track_url(album_meta['tracks'][0]['itemid'])
-
-    _, album_meta['quality'] = await get_quality(track_meta)
-    
-    # for convenience, do not post album poster if artist
-    if upload:
-        album_meta['poster_msg'] = await post_art_poster(user, album_meta)
-
-    if basefolder:
-        album_folder = basefolder + f"/{album_meta['title']}"
-    else:
-        album_folder = f"{Config.DOWNLOAD_BASE_DIR}/{user['r_id']}/{album_meta['provider']}/{album_meta['artist']}/{album_meta['title']}"
-    album_folder = sanitize_filepath(album_folder)
-    album_meta['folderpath'] = album_folder
-    
-    # concurrent
-    tasks = []
-    for track in album_meta['tracks']:
-        tasks.append(start_track(track['itemid'], user, track, False, album_folder))
-        
-    
-    update_details = {
-        'text': lang.s.DOWNLOAD_PROGRESS,
-        'msg': user['bot_msg'],
-        'title': album_meta['title'],
-        'type': album_meta['type']
-    }
-    await run_concurrent_tasks(tasks, update_details)
-
-    if bot_set.album_zip:
-        await edit_message(user['bot_msg'], lang.s.ZIPPING)
-        album_meta['folderpath'] = await zip_handler(album_meta['folderpath'])
-
-    # Upload
-    if upload:
-        await edit_message(user['bot_msg'], lang.s.UPLOADING)
-        await album_upload(album_meta, user)
-
-
-async def start_track(item_id:int, user:dict, track_meta:dict | None, upload=True, basefolder=None, disable_link=False, disable_msg=False):
-    """
-    Args:
-        item_id: qobuz track id
-        user: user details
-        track_meta: prefetched meta
-        upload: enable upload or not
-        basefolder: base folder path to download track
-        disable_link: disable sending rclone link as message
-        disable_msg: disable uploading message
-    Returns:
-        Acknowledgement (bool) when finished
-    """
-    
-    if not track_meta:
-        track_meta, err = await get_track_metadata(item_id, user['r_id'])
-        if err:
-            return await send_message(user, err)
-        filepath = f"{Config.DOWNLOAD_BASE_DIR}/{user['r_id']}/{track_meta['provider']}/{track_meta['albumartist']}/{track_meta['album']}"
-    else:
-        # set base file path if doesnt exist in metadata
-        if track_meta['filepath'] == '' and basefolder is None:
-            filepath = f"{Config.DOWNLOAD_BASE_DIR}/{user['r_id']}/{track_meta['provider']}/{track_meta['albumartist']}/{track_meta['album']}"
-        else:
-            filepath = basefolder
-        
-    raw_data = await qobuz_api.get_track_url(item_id)
-    try:
-        url = raw_data['url']
-    except KeyError:
-        return await send_message(user, lang.s.ERR_QOBUZ_NOT_AVAILABLE)
-        
-    track_meta['extension'], track_meta['quality'] = await get_quality(raw_data)
-
-    # add filename to filepath
-    filename = await format_string(Config.TRACK_NAME_FORMAT, track_meta, user)
-    filepath += f"/{filename}.{track_meta['extension']}"
-    filepath = sanitize_filepath(filepath)
-    track_meta['filepath'] = filepath
-
-    err = await download_file(url, filepath)
-    if err:
-        return await send_message(user, err)
-    
-    await set_metadata(track_meta)
-
-    if upload:
-        await track_upload(track_meta, user, disable_link)
-            
-    # Acknowledge task finished
-    return True
-
-
-
-async def start_artist(albums, user, artist):
-    artist_meta = await get_artist_meta(artist[0])
-    artist_meta['folderpath'] = f"{Config.DOWNLOAD_BASE_DIR}/{user['r_id']}/Qobuz/{artist[0]['name']}"
-    artist_meta['folderpath'] = sanitize_filepath(artist_meta['folderpath'])
-
-    upload_album = True
-    if bot_set.artist_batch:
-        # for telegram, batch upload is not needed
-        upload_album = True if bot_set.upload_mode == 'Telegram' else False
-    if bot_set.artist_zip:
-        upload_album = False # final decision
-
-    # no concurrent download
-    for album in albums:
-        await start_album(album['id'], user, upload_album, artist_meta['folderpath'])
-
-    # now upload artist folder as a whole
-    if not upload_album:
-        if bot_set.artist_zip:
-            await edit_message(user['bot_msg'], lang.s.ZIPPING)
-            artist_meta['folderpath'] = await zip_handler(artist_meta['folderpath'])
-        
-        await edit_message(user['bot_msg'], lang.s.UPLOADING)
-        await artist_upload(artist_meta, user)
-
-
-
-async def start_playlist(tracks, playlist, user):
-    play_meta = await get_playlist_meta(playlist[0], tracks, user['r_id'])
-    
-    playlist_folder = None
-
-    # temp variable (telegram upload doesnt need sorting)
-    playlist_sort = False if bot_set.upload_mode == 'Telegram' else bot_set.playlist_sort
-    
-    if not playlist_sort:
-        playlist_folder = f"{Config.DOWNLOAD_BASE_DIR}/{user['r_id']}/Qobuz/{play_meta['title']}"
-        playlist_folder = sanitize_filepath(playlist_folder)
-    play_meta['folderpath'] = playlist_folder
-    
-    # Get user quality by doing a track request
-    track_meta = await qobuz_api.get_track_url(tracks[0]['id'])
-    _, play_meta['quality'] = await get_quality(track_meta)
-
-    update_details = {
-        'text': lang.s.DOWNLOAD_PROGRESS,
-        'msg': user['bot_msg'],
-        'title': play_meta['title'],
-        'type': play_meta['type']
-    }
-
-    play_meta['poster_msg'] = await post_art_poster(user, play_meta)
-
-    upload = True
-    if bot_set.playlist_conc:
-        upload = False
-        tasks = []
-        for track in play_meta['tracks']:
-            tasks.append(start_track(track['itemid'], user, track, upload, playlist_folder))
-        await run_concurrent_tasks(tasks, update_details)
-    else:
-        i = 0
-        if bot_set.playlist_zip: upload = False
-        for track in play_meta['tracks']:
-            await progress_message(i, len(play_meta['tracks']), update_details)
-            await start_track(track['itemid'], user, track, upload, playlist_folder, bot_set.disable_sort_link, True)
-            i+=1
-
-    if bot_set.playlist_zip:
-        await edit_message(user['bot_msg'], lang.s.ZIPPING)
-        if playlist_sort:
-            play_meta['folderpath'] = await move_sorted_playlist(play_meta, user)
-        play_meta['folderpath'] = await zip_handler(play_meta['folderpath'])
-       
-    if not upload:
-        await edit_message(user['bot_msg'], lang.s.UPLOADING)
-        await playlist_upload(play_meta, user)
+            return 'flac', f'{meta["bit_depth"]}B - {meta["sampling_rate"]}k'

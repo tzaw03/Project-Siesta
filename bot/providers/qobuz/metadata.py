@@ -1,7 +1,7 @@
 import re
 import hashlib
 
-from bot.models.metadata import TrackMetadata, AlbumMetadata, ArtistMetadata
+from bot.models.metadata import TrackMetadata, AlbumMetadata, ArtistMetadata, PlaylistMetadata
 from bot.utils.downloader import downloader
 from bot.models.provider import MetadataHandler
 
@@ -23,7 +23,7 @@ class QobuzMetadata(MetadataHandler):
             tracknumber=track_data['track_number'],
             date=track_data['release_date_original'],
             totaltracks=track_data['album']['tracks_count'],
-            provider='Qobuz'
+            provider='qobuz'
         )
 
         metadata.artist = cls.get_artists_name(track_data['album'])
@@ -31,15 +31,75 @@ class QobuzMetadata(MetadataHandler):
             metadata.title += f' ({track_data["version"]})'
 
         metadata.cover = await cls.get_cover(track_data['album']['image']['large'], cover_folder)
-        metadata.cover = await cls.get_cover(track_data['album']['image']['thumbnail'], cover_folder)
-
+        metadata.thumbnail = await cls.get_cover(track_data['album']['image']['thumbnail'], cover_folder)
         return metadata
 
 
 
     @classmethod
-    async def process_album_metadata(cls, album_id, album_data, cover_folder):
-        pass
+    async def process_album_metadata(cls, album_id, album_data, track_datas, cover_folder):
+        metadata = AlbumMetadata(
+            itemid=album_id,
+            title=album_data['title'],
+            albumartist=album_data['artist']['name'],
+            upc=album_data['upc'],
+            album=album_data['title'],
+            artist=album_data['artist']['name'],
+            date=album_data['release_date_original'],
+            totaltracks=album_data['tracks_count'],
+            duration=album_data['duration'],
+            copyright=album_data.get('copyright', ''),
+            genre=album_data['genre']['name'],
+            explicit=album_data['parental_warning'],
+            provider='qobuz'
+        )
+
+        metadata.cover = await cls.get_cover(album_data['image']['large'], cover_folder)
+        metadata.thumbnail = await cls.get_cover(album_data['image']['thumbnail'], cover_folder)
+        metadata.tracks=track_datas
+
+        return metadata
+
+    
+    @classmethod
+    async def process_artist_metadata(cls, artist_data, album_datas, cover_folder):
+        artist_data = artist_data[0]
+        metadata = ArtistMetadata(
+            itemid=artist_data['id'],
+            title=artist_data['name'],
+            artist=artist_data['name'],
+            provider='qobuz',
+            albums=album_datas
+        )
+
+        metadata.cover = await cls.get_cover(artist_data['image']['large'], cover_folder)
+        metadata.thumbnail = await cls.get_cover(artist_data['image']['small'], cover_folder)
+        return metadata
+
+        
+    @classmethod
+    async def process_playlist_metadata(cls, playlist_data, track_datas, cover_folder):
+        metadata = PlaylistMetadata(
+            itemid=playlist_data['id'],
+            title=playlist_data['name'],
+            provider='qobuz',
+            totaltracks=playlist_data['tracks_count'],
+            date=playlist_data['created_at'],
+            duration=playlist_data['duration']
+        )
+
+        tracks = []
+        for item in track_datas:
+            track = await cls.process_track_metadata(item['id'], item, cover_folder)
+            tracks.append(track)
+
+        
+
+        metadata.tracks = tracks
+        metadata.cover = await cls.get_cover(playlist_data['images300'][0], cover_folder)
+        metadata.thumbnail = await cls.get_cover(playlist_data['images'][0], cover_folder)
+        return metadata
+
 
 
     @staticmethod
