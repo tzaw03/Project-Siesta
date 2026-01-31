@@ -12,6 +12,7 @@ from ...models.provider import Provider
 from ...utils.message import send_text
 from ...utils.downloader import downloader
 from ...utils.metadata import set_metadata
+from bot.providers.tidal.errors import RegionLocked
 
 
 
@@ -81,8 +82,21 @@ class TidalHandler(Provider):
 
     @classmethod
     async def get_playlist_metadata(cls, item_id, task_details):
-        pass
-
+        raw_data = await tidalapi.get_playlist(item_id)
+        raw_tracks = await tidalapi.get_playlist_items(item_id)
+        
+        tracks = []
+        for item in raw_tracks['items']:
+            try:
+                _track = await tidalapi.get_track(item['item']['id'])
+            except RegionLocked:
+                LOGGER.error(f"Tidal : Item in playlist is region locked - {raw_data['title']}")
+                continue
+            _track_meta = await TidalMetadata.process_track_metadata(item['item']['id'], _track, task_details.tempfolder)
+            tracks.append(_track_meta)
+        
+        metadata = await TidalMetadata.process_playlist_metadata(raw_data, tracks, task_details.tempfolder)
+        return metadata
 
 
     @classmethod

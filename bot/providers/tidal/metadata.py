@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from ...models.metadata import TrackMetadata, AlbumMetadata, ArtistMetadata
+from ...models.metadata import TrackMetadata, AlbumMetadata, ArtistMetadata, PlaylistMetadata
 from ...utils.downloader import downloader
 from ...models.provider import MetadataHandler
 
@@ -80,9 +80,20 @@ class TidalMetadata(MetadataHandler):
 
 
     @classmethod
-    async def process_playlist_metadata(cls, track_datas, cover_folder):
-        return await super().process_playlist_metadata(track_datas, cover_folder)
+    async def process_playlist_metadata(cls, playlist_data, track_datas, cover_folder):
+        metadata = PlaylistMetadata(
+            itemid=playlist_data['uuid'],
+            title=playlist_data['title'],
+            provider='tidal',
+            tracks=track_datas,
+            totaltracks=playlist_data['numberOfTracks'],
+            duration=playlist_data['duration'],
+            date=playlist_data['created']
+        )
 
+        metadata.cover = await cls.get_cover(playlist_data.get('image'), cover_folder)
+        metadata.thumbnail = await cls.get_cover(playlist_data.get('image'), cover_folder, 'thumbnail')
+        return metadata
 
     @staticmethod
     async def get_cover(cover_id, cover_folder, cover_type='track'):

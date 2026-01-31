@@ -82,4 +82,4 @@ def get_uploader() -> type[Uploader]:
         'telegram': TelegramUploader,
         'local': LocalUploader,
     }
-    return uploaders.get(bot_settings.upload_mode.lower(), TelegramUploader)
+    return uploaders.get(bot_settings.upload_mode.value.lower(), TelegramUploader)

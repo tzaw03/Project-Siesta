@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery
 
+from bot import CMD
 from bot.helpers.translations import L
 from bot.models.task import TaskDetails
 from bot.buttons.settings import main_menu

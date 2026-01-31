@@ -56,6 +56,9 @@ class ArtistMetadata(_Metadata):
 @dataclass
 class PlaylistMetadata(_Metadata):
     tracks: list[TrackMetadata] = field(default_factory=list)
+    totaltracks: int = 1
+    date: str = ''
+    duration: int = 0
     type_: str = 'playlist'
 
 

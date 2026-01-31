@@ -46,7 +46,7 @@ def core_buttons():
         inline_keyboard.append([Button(text=f"Return Link : {bot_settings.link_options}", callback_data='linkOptions')])
 
     inline_keyboard += [
-        [Button(text=f"Upload : {bot_settings.upload_mode}", callback_data='upload')],
+        [Button(text=f"Upload : {bot_settings.upload_mode.value}", callback_data='upload')],
         [
             Button(text=L.SORT_PLAYLIST.format(bot_settings.playlist_sort), callback_data='sortPlay'),
             Button(text=L.DISABLE_SORT_LINK.format(bot_settings.disable_sort_link), callback_data='sortLinkPlay')],

@@ -93,6 +93,31 @@ class TidalApi:
         return await self._get('artists/' + str(artist_id) + '/albums', params={'filter': 'EPSANDSINGLES'})
 
 
+    async def get_playlist(self, playlist_id):
+        return await self._get("playlists/" + str(playlist_id))
+
+    async def get_playlist_items(self, playlist_id):
+        result = await self._get(
+            "playlists/" + playlist_id + "/items", {"offset": 0, "limit": 100}
+        )
+
+        if result["totalNumberOfItems"] <= 100:
+            return result
+
+        offset = len(result["items"])
+        while True:
+            buf = await self._get(
+                "playlists/" + playlist_id + "/items", {"offset": offset, "limit": 100}
+            )
+            offset += len(buf["items"])
+            result["items"] += buf["items"]
+
+            if offset >= result["totalNumberOfItems"]:
+                break
+
+        return result
+
+
     async def get_stream_url(self, track_id, quality, session):
         return await self._get('tracks/' + str(track_id) + '/playbackinfopostpaywall/v4', {
             'playbackmode': 'STREAM',
