@@ -86,7 +86,7 @@ async def tidal_quality_cb(c, cb: CallbackQuery):
     if await check_user(cb.from_user.id, restricted=True):
         quality_display = {}
         for q in TidalQuality:
-            if q == TidalQuality.HI_RES and not tidalapi.mobile_hires:
+            if q == TidalQuality.MAX and not tidalapi.mobile_hires:
                 continue
             text = q.value
             if tidalapi.quality == q.name: text += ' ✅'

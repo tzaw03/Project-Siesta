@@ -11,7 +11,7 @@ class TidalQuality(Enum):
     LOW = 'LOW'
     HIGH = 'HIGH'
     LOSSLESS = 'LOSSLESS'
-    HI_RES = 'MAX'
+    MAX = 'MAX'
 
 
 class TidalSpatial(Enum):

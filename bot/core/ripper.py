@@ -242,8 +242,8 @@ class Ripper:
             
             # Build the command
             cmd = cmd_template.format(
-                input=str(input_path),
-                output=str(output_path)
+                input=f'"{input_path}"',
+                output=f'"{output_path}"'
             )
             
             # Run FFmpeg
