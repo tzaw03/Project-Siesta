@@ -15,7 +15,7 @@ from bot.providers.tidal.handler import TidalHandler
 from bot.providers.qobuz.handler import QobuzHandler
 from bot.providers.deezer.handler import DeezerHandler
 
-from bot.uploader import TelegramUploader, get_uploader
+from bot.core.uploader import TelegramUploader, get_uploader
 from bot.settings import bot_settings
 
 from bot.utils.message import edit_message, send_art_post
