@@ -1,6 +1,5 @@
 import asyncio
 from typing import Optional
-from pathlib import Path
 
 from pyrogram.errors import FloodWait, MessageNotModified
 from pyrogram.types import Message
@@ -8,8 +7,8 @@ from pyrogram.types import Message
 from bot import Config, LOGGER
 from bot.settings import bot_settings
 from bot.tgclient import siesta
-
-from ..models.task import TaskDetails
+from bot.helpers.translations import L
+from bot.models.metadata import AlbumMetadata, PlaylistMetadata, ArtistMetadata
 
 
 async def copy_to_channel(msg: Message) -> Message | None:
@@ -173,3 +172,64 @@ async def send_text(text, task_details, chat_id: Optional[int] = None, markup=No
         reply_markup=markup
     )
     return msg
+
+
+async def send_art_post(metadata, task_details, chat_id: Optional[int] = None):
+    """
+    Send album/playlist/artist art with formatted caption.
+    
+    Args:
+        metadata: AlbumMetadata, PlaylistMetadata, or ArtistMetadata object
+        task_details: TaskDetails object containing chat info
+        chat_id: Optional chat ID override
+    
+    Returns:
+        The sent message if successful, None otherwise.
+    """
+    
+    chat_id = chat_id or task_details.chat_id
+    
+    cover = getattr(metadata, 'cover', None) or getattr(metadata, 'thumbnail', None)
+    if not cover:
+        return None
+    
+    if isinstance(metadata, AlbumMetadata):
+        caption = L.ALBUM_TEMPLATE.format(
+            title=metadata.title,
+            artist=metadata.artist,
+            date=metadata.date or 'N/A',
+            totaltracks=metadata.totaltracks,
+            totalvolume=metadata.totalvolume,
+            quality=metadata.quality or 'N/A',
+            provider=metadata.provider.title(),
+            explicit='Yes' if metadata.explicit else 'No'
+        )
+    elif isinstance(metadata, PlaylistMetadata):
+        caption = L.PLAYLIST_TEMPLATE.format(
+            title=metadata.title,
+            totaltracks=metadata.totaltracks,
+            quality=getattr(metadata, 'quality', 'N/A') or 'N/A',
+            provider=metadata.provider.title()
+        )
+    elif isinstance(metadata, ArtistMetadata):
+        caption = L.ARTIST_TEMPLATE.format(
+            artist=metadata.artist,
+            quality=getattr(metadata, 'quality', 'N/A') or 'N/A',
+            provider=metadata.provider.title()
+        )
+    else:
+        return None
+    
+    try:
+        msg = await safe_telegram_call(
+            siesta.send_photo,
+            chat_id=chat_id,
+            photo=cover,
+            caption=caption,
+            reply_to_message_id=task_details.reply_to_message_id
+        )
+        await copy_to_channel(msg)
+        return msg
+    except Exception as e:
+        LOGGER.error(f"Failed to send art post: {e}")
+        return None

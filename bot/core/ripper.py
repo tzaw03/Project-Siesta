@@ -19,7 +19,7 @@ from bot.providers.deezer.handler import DeezerHandler
 from .uploader import TelegramUploader, get_uploader
 from ..settings import bot_settings
 
-from ..utils.message import edit_message
+from ..utils.message import edit_message, send_art_post
 from ..utils.string import format_progress_message, format_string
 from ..utils.zip import ZipHandler
 
@@ -86,6 +86,9 @@ class Ripper:
         metadata = await provider.get_album_metadata(item_id, task_details)
         album_path = cls.get_album_dir(task_details, metadata)
 
+        if bot_settings.art_poster:
+            await send_art_post(metadata, task_details)
+
         tasks = []
         for track in metadata.tracks:
             track_path = album_path / format_string("track", track)
@@ -116,6 +119,9 @@ class Ripper:
         i, l = 0, len(metadata.albums)
         for album in metadata.albums:
             album_path = artist_path / format_string('album', album)
+            
+            if bot_settings.art_poster:
+                await send_art_post(album, task_details)
             bar = _progress_bar(i, l)
             await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.artist, 'Artist Albums'), flood_wait=False)
             tasks = []
@@ -142,6 +148,9 @@ class Ripper:
     async def handle_playlist(cls, item_id, provider: type[Provider], task_details: TaskDetails):
         metadata = await provider.get_playlist_metadata(item_id, task_details)
         playlist_path = cls.get_playlist_dir(task_details, metadata)
+
+        if bot_settings.art_poster:
+            await send_art_post(metadata, task_details)
 
         tasks = []
         for track in metadata.tracks:
