@@ -129,3 +129,11 @@ class Config(object):
 
 #--------------------
     MAX_WORKERS = int(getenv("MAX_WORKERS", 5))
+#--------------------
+
+# COPY MESSAGE
+
+#--------------------
+    # Channel/Group ID where uploaded files will be copied to
+    # Set to None to disable, or provide a chat ID (e.g., -1001234567890)
+    COPY_CHANNEL_ID = int(getenv("COPY_CHANNEL_ID")) if getenv("COPY_CHANNEL_ID") else None

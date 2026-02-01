@@ -5,11 +5,35 @@ from pathlib import Path
 from pyrogram.errors import FloodWait, MessageNotModified
 from pyrogram.types import Message
 
-from bot import LOGGER
+from bot import Config, LOGGER
 from bot.settings import bot_settings
 from bot.tgclient import siesta
 
 from ..models.task import TaskDetails
+
+
+async def copy_to_channel(msg: Message) -> Message | None:
+    """
+    Copy a message to the configured copy channel.
+    
+    Args:
+        msg: The Pyrogram Message object to copy.
+    
+    Returns:
+        The copied message if successful, None otherwise.
+    """
+    if not Config.COPY_CHANNEL_ID or not msg:
+        return None
+    
+    try:
+        copied_msg = await safe_telegram_call(
+            msg.copy,
+            chat_id=Config.COPY_CHANNEL_ID
+        )
+        return copied_msg
+    except Exception as e:
+        LOGGER.error(f"Failed to copy message to channel {Config.COPY_CHANNEL_ID}: {e}")
+        return None
 
 
 current_user = set()
@@ -117,6 +141,7 @@ async def send_document(document, task_details, chat_id: Optional[int] = None, c
         caption=caption,
         reply_to_message_id=reply_to
     )
+    await copy_to_channel(msg)
     return msg
 
 
@@ -134,6 +159,7 @@ async def send_audio(audio, metadata, task_details, chat_id: Optional[int] = Non
         thumb=metadata.thumbnail,
         audio=audio
     )
+    await copy_to_channel(msg)
     return msg
 
 
