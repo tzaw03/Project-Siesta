@@ -137,3 +137,11 @@ class Config(object):
     # Channel/Group ID where uploaded files will be copied to
     # Set to None to disable, or provide a chat ID (e.g., -1001234567890)
     COPY_CHANNEL_ID = int(getenv("COPY_CHANNEL_ID")) if getenv("COPY_CHANNEL_ID") else None
+#--------------------
+
+# FFMPEG CONVERSION
+
+#--------------------
+    FFMPEG_ENABLED = getenv("FFMPEG_ENABLED", "false").lower() == "true"
+    # Example: "ffmpeg -i {input} -b:a 320k {output}" to convert to 320kbps
+    FFMPEG_CMD = getenv("FFMPEG_CMD", "ffmpeg -i {input} -c:a libmp3lame -b:a 320k {output}")

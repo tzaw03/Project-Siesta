@@ -1,5 +1,7 @@
 import asyncio
 import math
+import re
+from pathlib import Path
 
 from pyrogram.types import Message
 
@@ -71,6 +73,9 @@ class Ripper:
         metadata = await provider.get_track_metadata(item_id, task_details)
         track_path = cls.get_track_path(task_details, metadata)
         track_path = await provider.download_track(metadata, task_details, track_path)
+        
+        # Apply FFmpeg conversion if enabled
+        track_path = await cls.convert_with_ffmpeg(track_path)
    
         uploader = get_uploader()
         await uploader.upload(task_details, track_path, metadata)
@@ -93,6 +98,7 @@ class Ripper:
                 bar = _progress_bar(i, l)
                 await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.title, 'Album Tracks'), flood_wait=False)
                 track_path = await task
+                track_path = await cls.convert_with_ffmpeg(track_path)
                 await uploader.upload(task_details, track_path, track)
                 i+=1
         else:
@@ -120,6 +126,7 @@ class Ripper:
             if uploader == TelegramUploader and not ZipHandler.should_zip(metadata):
                 for task, track in zip(tasks, album.tracks):
                     track_path = await task
+                    track_path = await cls.convert_with_ffmpeg(track_path)
                     await uploader.upload(task_details, track_path, track)
             else:
                 await cls._run_album_tasks(tasks, metadata.title, False, task_details.bot_msg)
@@ -153,6 +160,7 @@ class Ripper:
                 bar = _progress_bar(i, l)
                 await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.title, 'Playlist Tracks'), flood_wait=False)
                 track_path = await task
+                track_path = await cls.convert_with_ffmpeg(track_path)
                 await uploader.upload(task_details, track_path, track)
                 i+=1
         else:
@@ -163,6 +171,7 @@ class Ripper:
             else:
                 for track_path, track in zip(results, metadata.tracks):
                     if track_path: # Ensure download was successful
+                        track_path = await cls.convert_with_ffmpeg(track_path)
                         await uploader.upload(task_details, track_path, track)
 
 
@@ -182,6 +191,78 @@ class Ripper:
                     await edit_message(bot_msg, format_progress_message(bar, i[0], l, title, 'Album Tracks'), flood_wait=False)
                 return result
         return await asyncio.gather(*(sem_task(task) for task in tasks))
+
+
+    @staticmethod
+    async def convert_with_ffmpeg(track_path: Path) -> Path:
+        """Convert track using FFmpeg if enabled. Returns the new path if converted, original otherwise."""
+        if not Config.FFMPEG_ENABLED or not track_path or not track_path.exists():
+            return track_path
+        
+        try:
+            # Extract output extension from the FFmpeg command
+            # Look for common audio extensions in the command
+            cmd_template = Config.FFMPEG_CMD
+            output_ext_match = re.search(r'\{output\}', cmd_template)
+            
+            if not output_ext_match:
+                return track_path
+            
+            # Determine output extension from command or default to mp3
+            # Check if command specifies codec that implies extension
+            if 'libmp3lame' in cmd_template or 'mp3' in cmd_template.lower():
+                output_ext = '.mp3'
+            elif 'libopus' in cmd_template or 'opus' in cmd_template.lower():
+                output_ext = '.opus'
+            elif 'libvorbis' in cmd_template or 'ogg' in cmd_template.lower():
+                output_ext = '.ogg'
+            elif 'aac' in cmd_template.lower() or 'libfdk_aac' in cmd_template:
+                output_ext = '.m4a'
+            elif 'flac' in cmd_template.lower():
+                output_ext = '.flac'
+            elif 'alac' in cmd_template.lower():
+                output_ext = '.m4a'
+            elif 'libwavpack' in cmd_template.lower() or 'wavpack' in cmd_template.lower():
+                output_ext = '.wv'
+            else:
+                # Default to mp3
+                output_ext = '.mp3'
+            
+            input_path = track_path
+            output_path = track_path.with_suffix(output_ext + '.tmp')
+            
+            # Build the command
+            cmd = cmd_template.format(
+                input=str(input_path),
+                output=str(output_path)
+            )
+            
+            # Run FFmpeg
+            process = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                # FFmpeg failed, log error and return original path
+                print(f"FFmpeg conversion failed: {stderr.decode()}")
+                if output_path.exists():
+                    output_path.unlink()
+                return track_path
+            
+            # Remove original file and rename converted file
+            input_path.unlink()
+            final_path = track_path.with_suffix(output_ext)
+            output_path.rename(final_path)
+            
+            return final_path
+            
+        except Exception as e:
+            print(f"FFmpeg conversion error: {e}")
+            return track_path
+
 
 
 
