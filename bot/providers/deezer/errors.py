@@ -5,7 +5,7 @@ class NotValidBfSecret(CustomError):
 
 
 class InvalidCredentials(CustomError):
-    default_message = 'DEEZER: Error while getting access tokem - Check your credentials'
+    default_message = 'DEEZER: Error while getting access token - Check your credentials'
 
 
 class InvalidARL(CustomError):
@@ -24,3 +24,15 @@ class APIError(Exception):
 
     def __str__(self):
         return f"DEEZER: {self.type}, {self.msg}, {str(self.payload)}"
+
+
+class TrackNotAvailable(CustomError):
+    default_message = 'DEEZER: Track not available'
+
+
+class RegionLocked(CustomError):
+    default_message = 'DEEZER: Track not available in your country'
+
+
+class FormatNotAvailable(CustomError):
+    default_message = 'DEEZER: Format not available by your subscription'

@@ -26,6 +26,15 @@ class DeezerAPI:
         self.ratelimit = aiolimiter.AsyncLimiter(30, 60)
 
         self.quality = 'MP3_128'
+        self.session: aiohttp.ClientSession | None = None
+        self.bf_secret: bytes | None = None
+        self.country: str = ''
+        self.license_token: str = ''
+        self.renew_timestamp: int = 0
+        self.language: str = ''
+        self.available_formats: list[str] = []
+        self.user: dict = {}
+        self.active: bool = False
 
     async def _api_call(self, method, payload={}):
         api_token = self.api_token if method not in ('deezer.getUserData', 'user.getArl') else ''
@@ -116,31 +125,31 @@ class DeezerAPI:
         if not user_data['USER']['USER_ID']:
             raise InvalidARL()
         self.user = user_data
+        self.active = True
         LOGGER.info(f"DEEZER : Subscription - {self.user['OFFER_NAME']}")
 
 
-    async def custom_url_parse(self, link) -> tuple[str, int]:
+    async def parse_url(self, link) -> tuple[str, str]:
         """
         Args:
             link: Deezer URL
         Returns:
-            media type (str), id (int)
+            media type (str), id (str)
         """
         url = urlparse(link)
 
         if url.hostname == 'link.deezer.com':
             async with self.ratelimit:
                 async with self.session.get(link, allow_redirects=True) as r:
-                    #resp = await r.json(content_type=None)
                     if r.status != 200:
-                        raise Exception(f'DEEZER : Invalid URL: {link}')
+                        raise InvalidURL(f'DEEZER : Invalid URL: {link}')
                     url = r.real_url
 
         path_match = re.match(r'^\/(?:[a-z]{2}\/)?(track|album|artist|playlist)\/(\d+)\/?$', url.path)
         if not path_match:
             raise InvalidURL(f'DEEZER : Invalid URL: {link}')
 
-        return path_match.group(1), int(path_match.group(2))
+        return path_match.group(2), path_match.group(1)
 
 
     async def get_track(self, id):
@@ -160,7 +169,7 @@ class DeezerAPI:
 
         # renews track token
         if time() - track_token_expiry >= 0:
-            track_token = await self._api_call('song.getData', {'sng_id': id, 'array_default': ['TRACK_TOKEN']})['TRACK_TOKEN']
+            track_token = (await self._api_call('song.getData', {'sng_id': id, 'array_default': ['TRACK_TOKEN']}))['TRACK_TOKEN']
 
         json = {
             'license_token': self.license_token,
@@ -193,6 +202,11 @@ class DeezerAPI:
         return res
 
 
+    async def get_artist(self, id):
+        res = await self._api_call('deezer.pageArtist', {'art_id': id, 'lang': self.language})
+        return res
+
+
     async def get_artist_album_ids(self, id, start, nb, credited_albums):
         payload = {
             'art_id': id,
@@ -207,7 +221,7 @@ class DeezerAPI:
         return [a['ALB_ID'] for a in resp['data']]
 
 
-    async def get_playlist(self, id, nb, start):
+    async def get_playlist(self, id, nb=-1, start=0):
         res = await self._api_call('deezer.pagePlaylist', {'nb': nb, 'start': start, 'playlist_id': id, 'lang': self.language, 'tab': 0, 'tags': True, 'header': True})
         return res
 
