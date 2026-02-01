@@ -1,27 +1,26 @@
 import asyncio
 import math
 import re
-from pathlib import Path
 
+from pathlib import Path
 from pyrogram.types import Message
 
-from bot import Config
-
-from ..models.task import TaskDetails
-from ..models.provider import Provider
-from ..models.metadata import *
-from ..models.errors import MetadataTypeError
+from bot import Config, LOGGER
+from bot.models.task import TaskDetails
+from bot.models.provider import Provider
+from bot.models.metadata import *
+from bot.models.errors import MetadataTypeError
 
 from bot.providers.tidal.handler import TidalHandler
 from bot.providers.qobuz.handler import QobuzHandler
 from bot.providers.deezer.handler import DeezerHandler
 
-from .uploader import TelegramUploader, get_uploader
-from ..settings import bot_settings
+from bot.uploader import TelegramUploader, get_uploader
+from bot.settings import bot_settings
 
-from ..utils.message import edit_message, send_art_post
-from ..utils.string import format_progress_message, format_string
-from ..utils.zip import ZipHandler
+from bot.utils.message import edit_message, send_art_post
+from bot.utils.string import format_progress_message, format_string
+from bot.utils.zip import ZipHandler
 
 PROVIDERS = {
     'tidal': TidalHandler,
@@ -89,23 +88,29 @@ class Ripper:
         if bot_settings.art_poster:
             await send_art_post(metadata, task_details)
 
+        # albums downloads are always parallel except Telegram downloads
         tasks = []
         for track in metadata.tracks:
             track_path = album_path / format_string("track", track)
             tasks.append(provider.download_track(track, task_details, track_path))
         
         uploader = get_uploader()
+
+        # For telegram runs 
         if uploader == TelegramUploader and not ZipHandler.should_zip(metadata):
             i, l = 0, len(tasks)
             for task, track in zip(tasks, metadata.tracks):
                 bar = _progress_bar(i, l)
                 await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.title, 'Album Tracks'), flood_wait=False)
                 track_path = await task
+
                 track_path = await cls.convert_with_ffmpeg(track_path)
+
                 await uploader.upload(task_details, track_path, track)
                 i+=1
         else:
-            await cls._run_album_tasks(tasks, metadata.title, True, task_details.bot_msg)
+            # concurrent downloads
+            await cls._run_concurrent_tasks(tasks, metadata.title, True, task_details.bot_msg)
             await uploader.upload(task_details, album_path, metadata)
 
 
@@ -122,20 +127,24 @@ class Ripper:
             
             if bot_settings.art_poster:
                 await send_art_post(album, task_details)
+
             bar = _progress_bar(i, l)
             await edit_message(task_details.bot_msg, format_progress_message(bar, i, l, metadata.artist, 'Artist Albums'), flood_wait=False)
+            
             tasks = []
             for track in album.tracks:
                 track_path = album_path / format_string("track", track)
                 tasks.append(provider.download_track(track, task_details, track_path))
 
+            # similar to the album logic, telegram downloads are sequential
             if uploader == TelegramUploader and not ZipHandler.should_zip(metadata):
                 for task, track in zip(tasks, album.tracks):
                     track_path = await task
                     track_path = await cls.convert_with_ffmpeg(track_path)
                     await uploader.upload(task_details, track_path, track)
             else:
-                await cls._run_album_tasks(tasks, metadata.title, False, task_details.bot_msg)
+                # concurrent downloads
+                await cls._run_concurrent_tasks(tasks, metadata.title, False, task_details.bot_msg)
                 if bot_settings.artist_batch is False:
                     await uploader.upload(task_details, album_path, album)
             i+=1
@@ -173,7 +182,7 @@ class Ripper:
                 await uploader.upload(task_details, track_path, track)
                 i+=1
         else:
-            results = await cls._run_album_tasks(tasks, metadata.title, True, task_details.bot_msg)
+            results = await cls._run_concurrent_tasks(tasks, metadata.title, True, task_details.bot_msg)
             
             if ZipHandler.should_zip(metadata) and not bot_settings.playlist_sort:
                  await uploader.upload(task_details, playlist_path, metadata)
@@ -186,14 +195,18 @@ class Ripper:
 
 
 
-    @staticmethod
-    async def _run_album_tasks(tasks: list, title, show_progress:bool, bot_msg=Optional[Message]):
+    @classmethod
+    async def _run_concurrent_tasks(cls, tasks: list, title, show_progress:bool, bot_msg=Optional[Message]):
         semaphore = asyncio.Semaphore(Config.MAX_WORKERS)
         i = [0]
         l = len(tasks)
         async def sem_task(task):
             async with semaphore:
                 result = await task
+
+                if result:
+                    result = await cls.convert_with_ffmpeg(result)
+
                 if show_progress and result:
                     i[0]+=1 # currently done
                     bar = _progress_bar(i[0], l)
@@ -210,15 +223,12 @@ class Ripper:
         
         try:
             # Extract output extension from the FFmpeg command
-            # Look for common audio extensions in the command
             cmd_template = Config.FFMPEG_CMD
             output_ext_match = re.search(r'\{output\}', cmd_template)
             
             if not output_ext_match:
                 return track_path
             
-            # Determine output extension from command or default to mp3
-            # Check if command specifies codec that implies extension
             if 'libmp3lame' in cmd_template or 'mp3' in cmd_template.lower():
                 output_ext = '.mp3'
             elif 'libopus' in cmd_template or 'opus' in cmd_template.lower():
@@ -234,19 +244,16 @@ class Ripper:
             elif 'libwavpack' in cmd_template.lower() or 'wavpack' in cmd_template.lower():
                 output_ext = '.wv'
             else:
-                # Default to mp3
                 output_ext = '.mp3'
             
             input_path = track_path
             output_path = track_path.with_suffix(output_ext + '.tmp')
             
-            # Build the command
             cmd = cmd_template.format(
                 input=f'"{input_path}"',
                 output=f'"{output_path}"'
             )
             
-            # Run FFmpeg
             process = await asyncio.create_subprocess_shell(
                 cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -256,7 +263,7 @@ class Ripper:
             
             if process.returncode != 0:
                 # FFmpeg failed, log error and return original path
-                print(f"FFmpeg conversion failed: {stderr.decode()}")
+                LOGGER.error(f"FFmpeg conversion failed: {stderr.decode()}")
                 if output_path.exists():
                     output_path.unlink()
                 return track_path
@@ -269,7 +276,7 @@ class Ripper:
             return final_path
             
         except Exception as e:
-            print(f"FFmpeg conversion error: {e}")
+            LOGGER.error(f"FFmpeg conversion error: {e}")
             return track_path
 
 
