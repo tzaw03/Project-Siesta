@@ -1,3 +1,5 @@
+import re
+
 from urllib.parse import urlparse
 
 from bot import LOGGER
@@ -5,7 +7,7 @@ from bot.models.provider import Provider
 
 from bot.providers.deezer.deezer_api import deezerapi
 from bot.providers.deezer.metadata import DeezerMetadata
-from bot.providers.deezer.errors import TrackNotAvailable
+from bot.providers.deezer.errors import TrackNotAvailable, InvalidURL
 
 from bot.utils.message import send_text
 from bot.utils.metadata import set_metadata
@@ -14,21 +16,33 @@ from bot.utils.metadata import set_metadata
 class DeezerHandler(Provider):
 
     @staticmethod
-    def parse_url(url):
+    async def _parse_url_async(url):
         url = urlparse(url)
 
-        if url.hostname == 'link.deezer.com':
-            async with deezerapi.ratelimit:
-                async with deezerapi.session.get(link, allow_redirects=True) as r:
-                    if r.status != 200:
-                        raise Exception(f'DEEZER : Invalid URL: {url}')
-                    url = r.real_url
+        path_match = re.match(
+            r'^\/(?:[a-z]{2}\/)?(track|album|artist|playlist)\/(\d+)\/?$',
+            url.path
+        )
 
-        path_match = re.match(r'^\/(?:[a-z]{2}\/)?(track|album|artist|playlist)\/(\d+)\/?$', url.path)
         if not path_match:
             raise InvalidURL(f'DEEZER : Invalid URL: {url}')
 
         return int(path_match.group(2)), path_match.group(1)
+
+
+    @staticmethod
+    def parse_url(url):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop → safe to run
+            return asyncio.run(Deezer.parse_url_async(url))
+        else:
+            # Already in async context → caller must await
+            raise RuntimeError(
+                "parse_url() called from async context. Use await parse_url_async()."
+            )
+
 
 
     @classmethod

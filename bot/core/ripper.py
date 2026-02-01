@@ -10,8 +10,10 @@ from ..models.provider import Provider
 from ..models.metadata import *
 from ..models.errors import MetadataTypeError
 
-from ..providers.tidal.handler import TidalHandler
+from bot.providers.tidal.handler import TidalHandler
 from bot.providers.qobuz.handler import QobuzHandler
+from bot.providers.deezer.handler import DeezerHandler
+
 from .uploader import TelegramUploader, get_uploader
 from ..settings import bot_settings
 
@@ -21,7 +23,8 @@ from ..utils.zip import ZipHandler
 
 PROVIDERS = {
     'tidal': TidalHandler,
-    'qobuz': QobuzHandler
+    'qobuz': QobuzHandler,
+    'deezer': DeezerHandler
 }
 
 

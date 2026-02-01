@@ -4,7 +4,7 @@ from bot import LOGGER, Config
 
 from .helpers.database.pg_impl import settings_db
 from .providers.qobuz.qopy import qobuz_api
-from .helpers.deezer.dzapi import deezerapi
+from .providers.deezer.deezer_api import deezerapi
 from .providers.tidal.tidal_api import tidalapi
 from .utils.string import decrypt_string
 
