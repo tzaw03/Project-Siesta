@@ -131,25 +131,37 @@ async def edit_message(msg:Message, text, markup=None, flood_wait=True):
 
 
 async def send_document(document, task_details, chat_id: Optional[int] = None, caption=Optional[str]):
-    chat_id = chat_id or task_details.chat_id
-    reply_to = task_details.reply_to_message_id
+    if Config.DIRECT_TO_CHANNEL and Config.COPY_CHANNEL_ID:
+        target_chat = Config.COPY_CHANNEL_ID
+        reply_to = None
+    else:
+        target_chat = chat_id or task_details.chat_id
+        reply_to = task_details.reply_to_message_id
+    
     msg = await safe_telegram_call(
         siesta.send_document,
-        chat_id=chat_id,
+        chat_id=target_chat,
         document=document,
         caption=caption,
         reply_to_message_id=reply_to
     )
-    await copy_to_channel(msg)
+    
+    if not Config.DIRECT_TO_CHANNEL:
+        await copy_to_channel(msg)
     return msg
 
 
 async def send_audio(audio, metadata, task_details, chat_id: Optional[int] = None, caption=Optional[str]):
-    chat_id = chat_id or task_details.chat_id
-    reply_to = task_details.reply_to_message_id
+    if Config.DIRECT_TO_CHANNEL and Config.COPY_CHANNEL_ID:
+        target_chat = Config.COPY_CHANNEL_ID
+        reply_to = None
+    else:
+        target_chat = chat_id or task_details.chat_id
+        reply_to = task_details.reply_to_message_id
+    
     msg = await safe_telegram_call(
         siesta.send_audio,
-        chat_id=chat_id,
+        chat_id=target_chat,
         reply_to_message_id=reply_to,
         caption=caption,
         duration=metadata.duration,
@@ -158,7 +170,9 @@ async def send_audio(audio, metadata, task_details, chat_id: Optional[int] = Non
         thumb=metadata.thumbnail,
         audio=audio
     )
-    await copy_to_channel(msg)
+    
+    if not Config.DIRECT_TO_CHANNEL:
+        await copy_to_channel(msg)
     return msg
 
 
@@ -187,7 +201,12 @@ async def send_art_post(metadata, task_details, chat_id: Optional[int] = None):
         The sent message if successful, None otherwise.
     """
     
-    chat_id = chat_id or task_details.chat_id
+    if Config.DIRECT_TO_CHANNEL and Config.COPY_CHANNEL_ID:
+        target_chat = Config.COPY_CHANNEL_ID
+        reply_to = None
+    else:
+        target_chat = chat_id or task_details.chat_id
+        reply_to = task_details.reply_to_message_id
     
     cover = getattr(metadata, 'cover', None) or getattr(metadata, 'thumbnail', None)
     if not cover:
@@ -223,13 +242,15 @@ async def send_art_post(metadata, task_details, chat_id: Optional[int] = None):
     try:
         msg = await safe_telegram_call(
             siesta.send_photo,
-            chat_id=chat_id,
+            chat_id=target_chat,
             photo=cover,
             caption=caption,
-            reply_to_message_id=task_details.reply_to_message_id
+            reply_to_message_id=reply_to
         )
-        await copy_to_channel(msg)
+        if not Config.DIRECT_TO_CHANNEL:
+            await copy_to_channel(msg)
         return msg
     except Exception as e:
         LOGGER.error(f"Failed to send art post: {e}")
+        return None
         return None

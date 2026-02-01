@@ -134,9 +134,12 @@ class Config(object):
 # COPY MESSAGE
 
 #--------------------
-    # Channel/Group ID where uploaded files will be copied to
+    # Channel/Group ID where uploaded files will be sent/copied to
     # Set to None to disable, or provide a chat ID (e.g., -1001234567890)
     COPY_CHANNEL_ID = int(getenv("COPY_CHANNEL_ID")) if getenv("COPY_CHANNEL_ID") else None
+    # If True, files are sent DIRECTLY to the channel (not to user first)
+    # If False, files are sent to user first, then copied to the channel
+    DIRECT_TO_CHANNEL = getenv("DIRECT_TO_CHANNEL", "false").lower() == "true"
 #--------------------
 
 # FFMPEG CONVERSION
