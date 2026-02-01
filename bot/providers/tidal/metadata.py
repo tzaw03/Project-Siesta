@@ -27,8 +27,8 @@ class TidalMetadata(MetadataHandler):
 
         parsed_date = datetime.strptime(track_data['streamStartDate'], '%Y-%m-%dT%H:%M:%S.%f%z')
         metadata.date = str(parsed_date.date())
-        metadata.cover = await cls.get_cover(track_data['album'].get('cover'), cover_folder)
-        metadata.thumbnail = await cls.get_cover(track_data['album'].get('cover'), cover_folder, 'thumbnail')
+        metadata.cover = await cls.get_cover(track_data['album'].get('cover', ''), cover_folder)
+        metadata.thumbnail = await cls.get_cover(track_data['album'].get('cover', ''), cover_folder, 'thumbnail')
 
         metadata._extra['media_tags'] = track_data['mediaMetadata']['tags']
 
@@ -56,8 +56,8 @@ class TidalMetadata(MetadataHandler):
             metadata.title += f' ({album_data["version"]})'
 
         metadata.artist = cls.get_artists_name(album_data)
-        metadata.cover = await cls.get_cover(album_data.get('cover'), cover_folder)
-        metadata.thumbnail = await cls.get_cover(album_data.get('cover'), cover_folder, 'thumbnail')
+        metadata.cover = await cls.get_cover(album_data.get('cover', ''), cover_folder)
+        metadata.thumbnail = await cls.get_cover(album_data.get('cover', ''), cover_folder, 'thumbnail')
 
         for track in track_datas:
             track_meta = await cls.process_track_metadata(track['id'], track, cover_folder)
@@ -73,8 +73,8 @@ class TidalMetadata(MetadataHandler):
             artist=artist_data['name'],
             provider='tidal'
         )
-        metadata.cover = await cls.get_cover(artist_data.get('picture'), cover_folder, 'artist')
-        metadata.thumbnail = metadata.cover # artist doesnt have much resolution option
+        #metadata.cover = await cls.get_cover(artist_data.get('picture', ''), cover_folder, 'artist')
+        #metadata.thumbnail = metadata.cover # artist doesnt have much resolution option
         metadata._extra['albums'] = album_datas
         return metadata
 

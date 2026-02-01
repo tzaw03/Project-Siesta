@@ -74,7 +74,8 @@ class TidalHandler(Provider):
         metadata = await TidalMetadata.process_artist_metadata(raw_data, album_datas, task_details.tempfolder)
         
         for album in metadata._extra['albums']:
-            album_metadata = await cls.get_album_metadata(album['id'], task_details)
+            tracks = await tidalapi.get_album_tracks(album['id'])
+            album_metadata = await TidalMetadata.process_album_metadata(album['id'], album, tracks['items'], task_details.tempfolder)
             metadata.albums.append(album_metadata)
 
         return metadata
